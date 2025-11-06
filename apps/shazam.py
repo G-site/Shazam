@@ -2,46 +2,43 @@ from aiogram import Router, F
 from aiogram.types import Message
 import os
 from dotenv import load_dotenv
-import ffmpeg
 import aiohttp
 import asyncio
 from shazamio import Shazam
+from pydub import AudioSegment
+from pydub.utils import which
+import ffmpeg
 
 from bot_instance import bot
 
 shazam_router = Router()
 
 load_dotenv()
-ADMIN = os.getenv("ADMIN")
 TOKEN = os.getenv("TOKEN")
 
+# Указываем ffmpeg для pydub (найдет системный или локальный бинарник)
+ffmpeg_path = which("ffmpeg")
+if not ffmpeg_path:
+    raise FileNotFoundError("❌ FFmpeg не найден в системе. Установи через 'apt install ffmpeg' или добавь в PATH")
+AudioSegment.converter = ffmpeg_path
 
-async def recognize_song(file_path):
+async def recognize_song(file_path: str):
     shazam = Shazam()
     try:
-        result = await shazam.recognize_song(file_path)
+        result = await shazam.recognize(file_path)  # новый метод
         return result
     except Exception as e:
         print("Ошибка распознавания Shazamio:", e)
         return None
 
-
-async def convert_to_mp3(input_path: str, output_path: str):
-    ffmpeg_path = os.path.join("ffmpeg", "ffmpeg.exe")
-    abs_path = os.path.abspath(ffmpeg_path)
-    print("🔍 Проверяю ffmpeg:", abs_path)
-    if not os.path.exists(ffmpeg_path):
-        raise FileNotFoundError(f"❌ FFmpeg не найден по пути: {abs_path}")
-    stream = ffmpeg.input(input_path)
-    stream = ffmpeg.output(stream, output_path, format="mp3", acodec="libmp3lame")
-    await asyncio.to_thread(
-        ffmpeg.run,
-        stream,
-        cmd=ffmpeg_path,
-        overwrite_output=True,
-        quiet=True
-    )
-
+async def convert_to_wav_normalized(input_path: str, output_path: str):
+    """
+    Конвертирует аудио в WAV с нормализацией громкости и ресэмплингом 44.1 kHz
+    """
+    # Через pydub: открываем и нормализуем
+    audio = AudioSegment.from_file(input_path)
+    audio = audio.set_frame_rate(44100).set_channels(2).apply_gain(-audio.max_dBFS)  # нормализация
+    audio.export(output_path, format="wav")
 
 @shazam_router.message(F.audio | F.voice)
 async def music(message: Message):
@@ -53,23 +50,39 @@ async def music(message: Message):
 
     os.makedirs("downloads", exist_ok=True)
     input_file = f"downloads/{message.from_user.id}_input.ogg"
-    output_file = f"downloads/{message.from_user.id}_output.mp3"
+    output_file = f"downloads/{message.from_user.id}_output.wav"
+    
     async with aiohttp.ClientSession() as session:
         async with session.get(file_url) as resp:
             with open(input_file, "wb") as f:
                 f.write(await resp.read())
-    await message.answer(text="🎧 <b>Распознаю твою песню...</b> ", parse_mode="HTML")
-    await convert_to_mp3(input_file, output_file)
+
+    first_msg = await message.answer(text="🎧 <b>Распознаю твою песню...</b> ", parse_mode="HTML")
+    
+    # Конвертация и нормализация
+    await convert_to_wav_normalized(input_file, output_file)
+    
+    # Распознавание
     data = await recognize_song(output_file)
+    
     if data and data.get("track"):
         track = data["track"]
         title = track.get("title", "Неизвестно")
         artist = track.get("subtitle", "Неизвестен")
-        await message.delete()
-        await message.answer(text=f"🎉 <b>Песня найдена!</b>\n\n🎵 <b>Название:</b> {title}\n👤 <b>Исполнитель:</b> {artist}", parse_mode="HTML", disable_web_page_preview=True)
+        await first_msg.delete()
+        await message.answer(
+            text=f"🎉 <b>Песня найдена!</b>\n\n🎵 <b>Название:</b> {title}\n👤 <b>Исполнитель:</b> {artist}",
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
     else:
-        await message.delete()
-        await message.answer("😕 <b>Упс...</b>\nМне не удалось распознать эту песню 🎧\n\nПопробуй отправить <b>более чёткий фрагмент</b> — желательно с вокалом и без шумов 🔊\n\n🎵 <i>Я обязательно попробую снова!</i>", parse_mode="HTML")
+        await first_msg.delete()
+        await message.answer(
+            "😕 <b>Упс...</b>\nМне не удалось распознать эту песню 🎧\n\nПопробуй отправить <b>более чёткий фрагмент</b> — желательно с вокалом и без шумов 🔊\n\n🎵 <i>Я обязательно попробую снова!</i>",
+            parse_mode="HTML"
+        )
+    
+    # Удаляем временные файлы
     try:
         os.remove(input_file)
         os.remove(output_file)
