@@ -126,7 +126,7 @@ smmap==5.0.2
 sniffio==1.3.1
 soupsieve==2.7
 stack-data==0.6.3
-sympy==1.13.3
+sympy==1.13.1
 terminado==0.18.1
 threadpoolctl==3.6.0
 tinycss2==1.4.0
@@ -144,4 +144,5 @@ webcolors==24.11.1
 webencodings==0.5.1
 websocket-client==1.8.0
 yarl==1.22.0
+
 
