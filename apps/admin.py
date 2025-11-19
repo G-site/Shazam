@@ -1,3 +1,4 @@
+import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
@@ -43,8 +44,9 @@ async def subscribe(callback: CallbackQuery):
                 reply_markup=subscribe_menu
             )
             sent += 1
-        except TelegramAPIError as e:
-            print(f"Ошибка, не всем отправлено, {e}")
+            await asyncio.sleep(0.5)
+        except TelegramAPIError:
+            pass
     await callback.answer(f"✅ Отправлено {sent} пользователям!")
 
 
@@ -61,8 +63,9 @@ async def share(callback: CallbackQuery):
                 reply_markup=share_menu
             )
             sent += 1
-        except TelegramAPIError as e:
-            print(f"Ошибка, не всем отправлено, {e}")
+            await asyncio.sleep(0.5)
+        except TelegramAPIError:
+            pass
     await callback.answer(f"✅ Отправлено {sent} пользователям!")
 
 
@@ -78,6 +81,7 @@ async def tech(callback: CallbackQuery):
                 parse_mode="HTML"
             )
             sent += 1
-        except TelegramAPIError as e:
-            print(f"Ошибка, не всем отправлено, {e}")
+            await asyncio.sleep(0.5)
+        except TelegramAPIError:
+            pass
     await callback.answer(f"✅ Отправлено {sent} пользователям!")
