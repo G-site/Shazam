@@ -1,9 +1,8 @@
 import os
-from dotenv import load_dotenv
 import psycopg  # psycopg3
 from psycopg.rows import dict_row
 
-load_dotenv()
+
 HOST = os.getenv("DB_HOST")
 PORT = int(os.getenv("DB_PORT"))
 DATABASE = os.getenv("DB_NAME")
@@ -36,15 +35,23 @@ async def connect():
 async def set_user(id, username, name):
     if pool is None:
         raise RuntimeError("DB pool is not initialized")
-    async with pool.cursor() as cur:
-        await cur.execute(
-            """
-            INSERT INTO users (id, username, name)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (id) DO NOTHING;
-            """,
-            (id, username, name)
+
+    async with pool.cursor() as conn:
+        await conn.execute(
+            "SELECT status FROM users WHERE id = %s;",
+            (id,)
         )
+        row = await conn.fetchone()
+        if not row:
+            await conn.execute(
+                """
+                INSERT INTO users (id, username, name)
+                VALUES (%s, %s, %s);
+                """,
+                (id, username, name)
+            )
+        else:
+            pass
 
 
 async def check_admin(id):
